@@ -1,17 +1,48 @@
 services:
   postgres:
     image: postgres:17.5
+    container_name: identity-postgres
     environment:
       POSTGRES_DB: echolife_identity
       POSTGRES_USER: echolife
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD in .env}
-    ports: ["55432:5432"]
+    ports: 
+      - "55432:5432"
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U echolife -d echolife_identity"]
       interval: 5s
       timeout: 3s
       retries: 20
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
 
   redis:
     image: redis:7.4.10-alpine
-    ports: ["6379:6379"]
+    container_name: identity-redis
+    ports: 
+      - "6379:6379"
+
+  identity-consent:
+    build: .
+    container_name: identity-consent-service
+    ports:
+      - "8081:8081"
+    env_file:
+      - .env
+    volumes:
+      - ./keys:/app/keys:ro
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_started
+    environment:
+      # Network overrides: Spring Boot must connect using the internal container names, not localhost
+      SPRING_DATASOURCE_URL: jdbc:postgresql://postgres:5432/echolife_identity
+      SPRING_DATASOURCE_USERNAME: echolife
+      SPRING_DATASOURCE_PASSWORD: ${POSTGRES_PASSWORD}
+      SPRING_DATA_REDIS_HOST: redis
+      SPRING_DATA_REDIS_PORT: 6379
+
+volumes:
+  postgres_data:
